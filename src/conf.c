@@ -91,14 +91,36 @@ void zlog_conf_del(zlog_conf_t * a_conf)
 	return;
 }
 
+static zlog_conf_t *zlog_conf_new_inner(int mode, const char *conf);
 static int zlog_conf_build_without_file(zlog_conf_t * a_conf);
 static int zlog_conf_build_with_file(zlog_conf_t * a_conf);
+static int zlog_conf_build_with_string(zlog_conf_t * a_conf, const char *text);
 
 zlog_conf_t *zlog_conf_new(const char *confpath)
 {
+    return zlog_conf_new_inner(ZC_FILE, confpath);
+}
+
+zlog_conf_t *zlog_conf_new_from_string(const char *text)
+{
+    return zlog_conf_new_inner(ZC_TEXT, text);
+}
+
+static zlog_conf_t *zlog_conf_new_inner(int mode, const char *conf)
+{
 	int nwrite = 0;
 	int has_conf_file = 0;
+	int has_conf_text = 0;
 	zlog_conf_t *a_conf = NULL;
+	const char *confpath = NULL;
+	const char *text = NULL;
+
+	if (mode == ZC_TEXT) {
+		has_conf_text = 1;
+		text = conf;
+	} else {
+		confpath = conf;
+	}
 
 	a_conf = calloc(1, sizeof(zlog_conf_t));
 	if (!a_conf) {
@@ -158,6 +180,11 @@ zlog_conf_t *zlog_conf_new(const char *confpath)
 	if (has_conf_file) {
 		if (zlog_conf_build_with_file(a_conf)) {
 			zc_error("zlog_conf_build_with_file fail");
+			goto err;
+		}
+	} else if (has_conf_text) {
+		if (zlog_conf_build_with_string(a_conf, text)) {
+			zc_error("zlog_conf_build_with_string fail");
 			goto err;
 		}
 	} else {
@@ -325,6 +352,100 @@ static int zlog_conf_build_with_file(zlog_conf_t * a_conf)
 
 exit:
 	fclose(fp);
+	return rc;
+}
+
+static int zlog_conf_build_with_string(zlog_conf_t * a_conf, const char *text)
+{
+	int rc = 0;
+	size_t line_len;
+	char *pline = NULL;
+	char *p = NULL;
+	int line_no = 0;
+	int i = 0;
+	int in_quotation = 0;
+
+	int section = 0;
+	/* [global:1] [levels:2] [formats:3] [rules:4] */
+
+        char *buffer = NULL;
+        char *nl = NULL;
+
+        /* XXX: sadly, the line preprocessing code here is mostly a duplicate of
+         *      what is in zlog_conf_build_with_file(). That code needs to be reworked
+         *      to be independent of the fgets(). */
+
+	buffer = strdup(text);
+	for (pline = buffer; pline; pline = nl ? nl+1 : NULL) {
+		nl = strchr(pline, '\n');
+		if (nl) {
+			*nl = '\0';
+		}
+
+		++line_no;
+		line_len = strlen(pline);
+		if (pline[line_len - 1] == '\n') {
+			pline[line_len - 1] = '\0';
+		}
+
+		/* check for end-of-section, comments, strip off trailing
+		 * spaces and newline character.
+		 */
+		p = pline;
+		while (*p && isspace((int)*p)) {
+			++p;
+		}
+		if (*p == '\0' || *p == '#') {
+			continue;
+		}
+
+		for (i = 0; p[i] != '\0'; ++i) {
+			pline[i] = p[i];
+		}
+		pline[i] = '\0';
+
+		for (p = pline + strlen(pline) - 1; isspace((int)*p); --p) {
+			/*EMPTY*/;
+		}
+
+		/* XXX: line continuations not supported here, sorry. */
+
+		/* clean the tail comments start from # and not in quotation */
+		in_quotation = 0;
+		for (p = pline; *p != '\0'; p++) {
+			if (*p == '"') {
+				in_quotation ^= 1;
+				continue;
+			}
+
+			if (*p == '#' && !in_quotation) {
+				*p = '\0';
+				break;
+			}
+		}
+
+		/* we now have the complete line,
+		 * and are positioned at the first non-whitespace
+		 * character. So let's process it
+		 */
+		rc = zlog_conf_parse_line(a_conf, pline, &section);
+		if (rc < 0) {
+			zc_error("parse configure file[%s]line_no[%ld] fail", a_conf->file, line_no);
+			zc_error("line[%s]", pline);
+			goto exit;
+		} else if (rc > 0) {
+			zc_warn("parse configure file[%s]line_no[%ld] fail", a_conf->file, line_no);
+			zc_warn("line[%s]", pline);
+			zc_warn("as strict init is set to false, ignore and go on");
+			rc = 0;
+			continue;
+		}
+	}
+
+exit:
+	if (buffer) {
+            free(buffer);
+        }
 	return rc;
 }
 

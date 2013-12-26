@@ -13,6 +13,9 @@
 #include "format.h"
 #include "rotater.h"
 
+#define ZC_FILE 0
+#define ZC_TEXT 1
+
 typedef struct zlog_conf_s {
 	char file[MAXLEN_PATH + 1];
 	char mtime[20 + 1];
@@ -40,6 +43,7 @@ typedef struct zlog_conf_s {
 extern zlog_conf_t * zlog_env_conf;
 
 zlog_conf_t *zlog_conf_new(const char *confpath);
+zlog_conf_t *zlog_conf_new_from_string(const char *text);
 void zlog_conf_del(zlog_conf_t * a_conf);
 void zlog_conf_profile(zlog_conf_t * a_conf, int flag);
 

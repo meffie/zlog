@@ -64,7 +64,7 @@ static void zlog_clean_rest_thread(void)
 	return;
 }
 
-static int zlog_init_inner(const char *confpath)
+static int zlog_init_inner(int mode, const char *conf)
 {
 	int rc = 0;
 
@@ -88,9 +88,13 @@ static int zlog_init_inner(const char *confpath)
 		zlog_env_init_version++;
 	} /* else maybe after zlog_fini() and need not create pthread_key */
 
-	zlog_env_conf = zlog_conf_new(confpath);
+	if (mode == ZC_TEXT) {
+		zlog_env_conf = zlog_conf_new_from_string(conf);
+	} else {
+		zlog_env_conf = zlog_conf_new(conf);
+	}
 	if (!zlog_env_conf) {
-		zc_error("zlog_conf_new[%s] fail", confpath);
+		zc_error("zlog_conf_new fail");
 		goto err;
 	}
 
@@ -113,7 +117,7 @@ err:
 }
 
 /*******************************************************************************/
-int zlog_init(const char *confpath)
+static int zlog_init_common(int mode, const char *conf)
 {
 	int rc;
 	zc_debug("------zlog_init start------");
@@ -130,9 +134,8 @@ int zlog_init(const char *confpath)
 		goto err;
 	}
 
-
-	if (zlog_init_inner(confpath)) {
-		zc_error("zlog_init_inner[%s] fail", confpath);
+	if (zlog_init_inner(mode, conf)) {
+		zc_error("zlog_init_inner fail");
 		goto err;
 	}
 
@@ -156,6 +159,17 @@ err:
 	return -1;
 }
 
+int zlog_init(const char *confpath)
+{
+    return zlog_init_common(ZC_FILE, confpath);
+}
+
+int zlog_init_from_string(const char *text)
+{
+    return zlog_init_common(ZC_TEXT, text);
+}
+
+
 int dzlog_init(const char *confpath, const char *cname)
 {
 	int rc = 0;
@@ -174,7 +188,7 @@ int dzlog_init(const char *confpath, const char *cname)
 		goto err;
 	}
 
-	if (zlog_init_inner(confpath)) {
+	if (zlog_init_inner(ZC_FILE, confpath)) {
 		zc_error("zlog_init_inner[%s] fail", confpath);
 		goto err;
 	}

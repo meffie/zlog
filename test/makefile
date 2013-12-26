@@ -8,6 +8,7 @@ exe = 		\
 	test_hello	\
 	test_hex	\
 	test_init	\
+	test_init_from_string \
 	test_level	\
 	test_leak	\
 	test_mdc	\
